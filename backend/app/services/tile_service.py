@@ -26,6 +26,9 @@ class TileService:
                 y_end = min(tile_y + self.tile_size, h)
                 x_end = min(tile_x + self.tile_size, w)
                 tile = image[tile_y:y_end, tile_x:x_end]
+                
+                original_h = tile.shape[0]
+                original_w = tile.shape[1]
 
                 if tile.shape[0] < self.tile_size or tile.shape[1] < self.tile_size:
                     padded = np.zeros(
@@ -41,7 +44,9 @@ class TileService:
                     'tile_x': tile_x // self.stride,
                     'tile_y': tile_y // self.stride,
                     'pixel_x': tile_x,
-                    'pixel_y': tile_y
+                    'pixel_y': tile_y,
+                    'original_h': original_h,
+                    'original_w': original_w
                 })
         return tiles
 
@@ -50,7 +55,7 @@ class TileService:
         y = tile_y * self.stride
         return x, y, x + self.tile_size, y + self.tile_size
 
-    def extract_tile_from_image(self, image: np.ndarray, tile_x: int, tile_y: int) -> np.ndarray:
+    def extract_tile_from_image(self, image: np.ndarray, tile_x: int, tile_y: int) -> Dict:
         h, w = image.shape[:2]
         x, y, x_end, y_end = self.get_tile_coordinates(tile_x, tile_y)
 
@@ -58,6 +63,9 @@ class TileService:
         y_end = min(y_end, h)
 
         tile = image[y:y_end, x:x_end]
+        
+        original_h = tile.shape[0]
+        original_w = tile.shape[1]
 
         if tile.shape[0] < self.tile_size or tile.shape[1] < self.tile_size:
             padded = np.zeros(
@@ -68,7 +76,11 @@ class TileService:
             padded[:tile.shape[0], :tile.shape[1]] = tile
             tile = padded
 
-        return tile
+        return {
+            'tile': tile,
+            'original_h': original_h,
+            'original_w': original_w
+        }
 
     def generate_dzi_tile(self, image: np.ndarray, z: int, x: int, y: int, tile_size: int = 256) -> bytes:
         max_level = int(np.ceil(np.log2(max(image.shape[0], image.shape[1]))))

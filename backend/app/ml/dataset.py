@@ -7,8 +7,9 @@ from PIL import Image
 
 
 class SonarTileDataset(Dataset):
-    def __init__(self, tiles: List[Dict], transform=None):
+    def __init__(self, tiles: List[Dict], transform=None, tile_size: int = 512):
         self.tiles = tiles
+        self.tile_size = tile_size
         self.transform = transform or self._default_transform()
 
     def __len__(self) -> int:
@@ -29,11 +30,16 @@ class SonarTileDataset(Dataset):
 
         tensor = self.transform(pil_image)
 
+        original_h = tile_info.get('original_h', self.tile_size)
+        original_w = tile_info.get('original_w', self.tile_size)
+        
         metadata = {
             'tile_x': tile_info['tile_x'],
             'tile_y': tile_info['tile_y'],
             'pixel_x': tile_info['pixel_x'],
-            'pixel_y': tile_info['pixel_y']
+            'pixel_y': tile_info['pixel_y'],
+            'original_h': original_h,
+            'original_w': original_w
         }
 
         return tensor, metadata
@@ -53,9 +59,10 @@ def create_dataloader(
     tiles: List[Dict],
     batch_size: int = 16,
     num_workers: int = 4,
-    pin_memory: bool = True
+    pin_memory: bool = True,
+    tile_size: int = 512
 ) -> DataLoader:
-    dataset = SonarTileDataset(tiles)
+    dataset = SonarTileDataset(tiles, tile_size=tile_size)
     return DataLoader(
         dataset,
         batch_size=batch_size,

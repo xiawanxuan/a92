@@ -27,7 +27,8 @@ class InferenceService:
 
         dataloader = create_dataloader(
             tiles,
-            batch_size=self.batch_size
+            batch_size=self.batch_size,
+            tile_size=settings.tile_size
         )
 
         total_tiles = len(tiles)
@@ -36,7 +37,14 @@ class InferenceService:
 
         with torch.no_grad():
             for batch_tensors, batch_metadata in tqdm(dataloader, desc="Classifying tiles"):
-                predictions, confidences, _ = self.model.predict(batch_tensors)
+                original_h = batch_metadata.get('original_h')
+                original_w = batch_metadata.get('original_w')
+                
+                predictions, confidences, _ = self.model.predict(
+                    batch_tensors,
+                    original_h=original_h,
+                    original_w=original_w
+                )
 
                 for i in range(len(predictions)):
                     class_idx = predictions[i].item()
