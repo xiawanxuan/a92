@@ -43,6 +43,7 @@ class TileClassification(Base):
     task = relationship("ClassificationTask", back_populates="tile_classifications")
     tile = relationship("Tile", back_populates="classifications")
     correction_records = relationship("CorrectionRecord", back_populates="classification", cascade="all, delete-orphan")
+    grad_cam_results = relationship("GradCAMResult", back_populates="classification", cascade="all, delete-orphan")
 
 
 class CorrectionRecord(Base):

@@ -1,7 +1,7 @@
-from .image import ImageMetadata
+from .image import Image as ImageMetadata
 from .tile import Tile
-from .classification import ClassificationTask, TileClassification
-from .correction import CorrectionRecord
+from .correction import ClassificationTask, TileClassification, CorrectionRecord
+from .grad_cam import GradCAMResult
 
 __all__ = [
     "ImageMetadata",
@@ -9,4 +9,5 @@ __all__ = [
     "ClassificationTask",
     "TileClassification",
     "CorrectionRecord",
+    "GradCAMResult",
 ]

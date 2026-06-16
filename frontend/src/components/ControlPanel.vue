@@ -18,6 +18,21 @@ const isCompleted = computed(() => classificationStore.isCompleted)
 const currentTask = computed(() => classificationStore.currentTask)
 const correctionMode = computed(() => classificationStore.correctionMode)
 
+const gradCamEnabled = computed(() => classificationStore.gradCamOverlaySettings.enabled)
+const gradCamOpacity = computed(() => classificationStore.gradCamOverlaySettings.opacity)
+const gradCamShowBbox = computed(() => classificationStore.gradCamOverlaySettings.show_bbox)
+const gradCamColormap = computed(() => classificationStore.gradCamOverlaySettings.heatmap_colormap)
+const hasGradCamResults = computed(() => classificationStore.hasGradCamResults)
+const selectedGradCam = computed(() => classificationStore.selectedGradCam)
+const gradCamResults = computed(() => classificationStore.gradCamResults)
+
+const colormapOptions = [
+  { value: 'jet', label: 'Jet' },
+  { value: 'hot', label: 'Hot' },
+  { value: 'viridis', label: 'Viridis' },
+  { value: 'plasma', label: 'Plasma' }
+]
+
 const CLASS_NAMES: Record<string, string> = SUBSTRATE_TYPES.reduce((acc, s) => {
   acc[s.key] = s.name
   return acc
@@ -44,6 +59,23 @@ function handleOpacityChange(event: Event) {
 
 function toggleGrid() {
   classificationStore.setShowGrid(!classificationStore.heatmapSettings.show_grid)
+}
+
+function toggleGradCam() {
+  classificationStore.setGradCamOverlayEnabled(!gradCamEnabled.value)
+}
+
+function handleGradCamOpacityChange(event: Event) {
+  const target = event.target as HTMLInputElement
+  classificationStore.setGradCamOpacity(parseFloat(target.value))
+}
+
+function toggleGradCamBbox() {
+  classificationStore.setGradCamShowBbox(!gradCamShowBbox.value)
+}
+
+function handleColormapChange(value: string) {
+  classificationStore.setGradCamColormap(value as any)
 }
 
 function getEffectiveClass(tile: TileClassification): SubstrateClass {
@@ -215,6 +247,116 @@ watch(selectedTile, (tile) => {
                 </svg>
               </div>
             </button>
+          </div>
+        </div>
+
+        <div v-if="hasGradCamResults" class="space-y-4">
+          <h3 class="text-slate-300 text-sm font-medium flex items-center gap-2">
+            <svg class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+            </svg>
+            目标定位 (Grad-CAM)
+            <span class="ml-auto text-xs px-2 py-0.5 rounded bg-red-500/20 text-red-400">
+              {{ gradCamResults.length }} 处
+            </span>
+          </h3>
+
+          <div class="space-y-3">
+            <button
+              class="w-full flex items-center justify-between p-3 rounded-lg border transition-all"
+              :class="gradCamEnabled
+                ? 'border-red-500 bg-red-500/10 text-red-400'
+                : 'border-slate-700 bg-slate-800/50 text-slate-400 hover:border-slate-600'"
+              @click="toggleGradCam"
+            >
+              <div class="flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                <span class="text-sm">显示目标热力图</span>
+              </div>
+              <div
+                class="w-4 h-4 rounded flex items-center justify-center"
+                :class="gradCamEnabled ? 'bg-red-500' : 'bg-slate-700'"
+              >
+                <svg v-if="gradCamEnabled" class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+            </button>
+
+            <template v-if="gradCamEnabled">
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-slate-400 text-sm">热力图透明度</span>
+                  <span class="text-red-400 font-mono text-sm">{{ (gradCamOpacity * 100).toFixed(0) }}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  :value="gradCamOpacity"
+                  class="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                  @input="handleGradCamOpacityChange"
+                />
+              </div>
+
+              <div>
+                <label class="text-slate-400 text-sm mb-2 block">配色方案</label>
+                <div class="grid grid-cols-4 gap-2">
+                  <button
+                    v-for="opt in colormapOptions"
+                    :key="opt.value"
+                    class="py-2 px-2 rounded border text-xs transition-all"
+                    :class="gradCamColormap === opt.value
+                      ? 'border-red-500 bg-red-500/10 text-red-400'
+                      : 'border-slate-700 bg-slate-800/50 text-slate-400 hover:border-slate-600'"
+                    @click="handleColormapChange(opt.value)"
+                  >
+                    {{ opt.label }}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                class="w-full flex items-center justify-between p-3 rounded-lg border transition-all"
+                :class="gradCamShowBbox
+                  ? 'border-red-500 bg-red-500/10 text-red-400'
+                  : 'border-slate-700 bg-slate-800/50 text-slate-400 hover:border-slate-600'"
+                @click="toggleGradCamBbox"
+              >
+                <div class="flex items-center gap-2">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zM14 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+                  </svg>
+                  <span class="text-sm">显示边界框</span>
+                </div>
+                <div
+                  class="w-4 h-4 rounded flex items-center justify-center"
+                  :class="gradCamShowBbox ? 'bg-red-500' : 'bg-slate-700'"
+                >
+                  <svg v-if="gradCamShowBbox" class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+              </button>
+            </template>
+
+            <div v-if="selectedGradCam" class="p-4 rounded-lg bg-red-500/10 border border-red-500/30">
+              <div class="text-red-400 text-sm font-medium mb-2">已选目标</div>
+              <div class="text-slate-400 text-xs space-y-1">
+                <p>位置: ({{ selectedGradCam.tile_x }}, {{ selectedGradCam.tile_y }})</p>
+                <p>置信度: {{ (selectedGradCam.confidence * 100).toFixed(1) }}%</p>
+                <p v-if="selectedGradCam.bbox">
+                  尺寸: {{ selectedGradCam.bbox.width.toFixed(0) }} × {{ selectedGradCam.bbox.height.toFixed(0) }}
+                </p>
+                <p v-if="selectedGradCam.bbox">
+                  面积占比: {{ (selectedGradCam.bbox.area_ratio * 100).toFixed(1) }}%
+                </p>
+              </div>
+            </div>
           </div>
         </div>
 

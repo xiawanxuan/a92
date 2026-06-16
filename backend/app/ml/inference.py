@@ -1,11 +1,15 @@
 import torch
 import numpy as np
-from typing import List, Dict, Callable, Optional
+from typing import List, Dict, Callable, Optional, Tuple
 from tqdm import tqdm
 
 from .model import ClassificationModel
 from .dataset import create_dataloader
 from ..core.config import settings
+
+
+MAN_MADE_CLASS = 'man_made'
+GRAD_CAM_CONFIDENCE_THRESHOLD = 0.8
 
 
 class InferenceService:
@@ -21,9 +25,9 @@ class InferenceService:
         tiles: List[Dict],
         image_id: str,
         progress_callback: Optional[Callable[[int, int], None]] = None
-    ) -> List[Dict]:
+    ) -> Tuple[List[Dict], List[Dict]]:
         if not tiles:
-            return []
+            return [], []
 
         dataloader = create_dataloader(
             tiles,
@@ -34,6 +38,7 @@ class InferenceService:
         total_tiles = len(tiles)
         processed = 0
         results = []
+        grad_cam_candidates = []
 
         with torch.no_grad():
             for batch_tensors, batch_metadata in tqdm(dataloader, desc="Classifying tiles"):
@@ -50,6 +55,9 @@ class InferenceService:
                     class_idx = predictions[i].item()
                     confidence = confidences[i].item()
                     class_name = self.model.get_class_name(class_idx)
+                    
+                    orig_h = original_h[i].item() if original_h is not None and isinstance(original_h[i], torch.Tensor) else (original_h[i] if original_h is not None else settings.tile_size)
+                    orig_w = original_w[i].item() if original_w is not None and isinstance(original_w[i], torch.Tensor) else (original_w[i] if original_w is not None else settings.tile_size)
 
                     result = {
                         'image_id': image_id,
@@ -61,12 +69,36 @@ class InferenceService:
                         'confidence': round(confidence, 4)
                     }
                     results.append(result)
+                    
+                    if (class_name == MAN_MADE_CLASS and 
+                        confidence >= GRAD_CAM_CONFIDENCE_THRESHOLD):
+                        grad_cam_candidates.append({
+                            'tensor': batch_tensors[i].clone(),
+                            'class_idx': class_idx,
+                            'original_h': int(orig_h),
+                            'original_w': int(orig_w),
+                            'result_idx': len(results) - 1
+                        })
 
                 processed += len(predictions)
                 if progress_callback:
                     progress_callback(processed, total_tiles)
 
-        return results
+        grad_cam_results = []
+        if grad_cam_candidates:
+            print(f"Generating Grad-CAM for {len(grad_cam_candidates)} high-confidence man-made targets...")
+            for candidate in tqdm(grad_cam_candidates, desc="Grad-CAM"):
+                grad_cam_result = self.model.generate_grad_cam(
+                    candidate['tensor'],
+                    candidate['class_idx'],
+                    original_h=candidate['original_h'],
+                    original_w=candidate['original_w']
+                )
+                if grad_cam_result:
+                    grad_cam_result['result_idx'] = candidate['result_idx']
+                    grad_cam_results.append(grad_cam_result)
+
+        return results, grad_cam_results
 
 
 _inference_service: Optional[InferenceService] = None

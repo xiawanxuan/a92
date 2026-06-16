@@ -10,7 +10,11 @@ import type {
   CorrectionResponse,
   CorrectionRecord,
   TileClassification,
-  HeatmapSettings
+  HeatmapSettings,
+  GradCAMResult,
+  GradCAMHeatmapResponse,
+  GradCAMListResponse,
+  GradCAMOverlaySettings
 } from '@/types'
 import {
   startClassification,
@@ -23,6 +27,7 @@ import {
   getStatsSummary,
   getProfileData
 } from '@/api/classification'
+import { gradCamApi } from '@/api/gradCam'
 import { ElMessage } from 'element-plus'
 
 export const useClassificationStore = defineStore('classification', () => {
@@ -46,6 +51,20 @@ export const useClassificationStore = defineStore('classification', () => {
 
   const selectedTile = ref<TileClassification | null>(null)
   const correctionMode = ref(false)
+
+  const gradCamResults = ref<GradCAMResult[]>([])
+  const gradCamHeatmaps = ref<Map<string, GradCAMHeatmapResponse>>(new Map())
+  const selectedGradCam = ref<GradCAMResult | null>(null)
+  const gradCamLoading = ref(false)
+
+  const gradCamOverlaySettings = ref<GradCAMOverlaySettings>({
+    enabled: false,
+    opacity: 0.7,
+    show_bbox: true,
+    heatmap_colormap: 'jet'
+  })
+
+  const hasGradCamResults = computed(() => gradCamResults.value.length > 0)
 
   const isProcessing = computed(() =>
     currentTask.value?.status === 'processing' ||
@@ -132,12 +151,71 @@ export const useClassificationStore = defineStore('classification', () => {
       heatmapData.value = heatmap
       statsSummary.value = stats
       profileData.value = profile
+
+      await loadGradCamResults(taskId)
     } catch (e: any) {
       error.value = e.message || '加载数据失败'
       ElMessage.error(error.value)
     } finally {
       loading.value = false
     }
+  }
+
+  async function loadGradCamResults(taskId: string, page = 1, pageSize = 200) {
+    gradCamLoading.value = true
+    try {
+      const response = await gradCamApi.getResultsByTask(taskId, page, pageSize)
+      gradCamResults.value = response.items
+    } catch (e: any) {
+      console.warn('加载 Grad-CAM 结果失败:', e.message)
+      gradCamResults.value = []
+    } finally {
+      gradCamLoading.value = false
+    }
+  }
+
+  async function loadGradCamHeatmap(gradCamId: string): Promise<GradCAMHeatmapResponse | null> {
+    try {
+      const existing = gradCamHeatmaps.value.get(gradCamId)
+      if (existing) return existing
+
+      const heatmap = await gradCamApi.getHeatmap(gradCamId)
+      gradCamHeatmaps.value.set(gradCamId, heatmap)
+      return heatmap
+    } catch (e: any) {
+      console.error('加载 Grad-CAM 热力图失败:', e.message)
+      return null
+    }
+  }
+
+  async function getGradCamHeatmapImage(gradCamId: string, colormap = 'jet'): Promise<string | null> {
+    try {
+      const blob = await gradCamApi.getHeatmapImage(gradCamId, colormap)
+      return URL.createObjectURL(blob)
+    } catch (e: any) {
+      console.error('加载 Grad-CAM 热力图图片失败:', e.message)
+      return null
+    }
+  }
+
+  function selectGradCam(gradCam: GradCAMResult | null) {
+    selectedGradCam.value = gradCam
+  }
+
+  function setGradCamOverlayEnabled(value: boolean) {
+    gradCamOverlaySettings.value.enabled = value
+  }
+
+  function setGradCamOpacity(value: number) {
+    gradCamOverlaySettings.value.opacity = Math.max(0, Math.min(1, value))
+  }
+
+  function setGradCamShowBbox(value: boolean) {
+    gradCamOverlaySettings.value.show_bbox = value
+  }
+
+  function setGradCamColormap(value: 'jet' | 'hot' | 'viridis' | 'plasma') {
+    gradCamOverlaySettings.value.heatmap_colormap = value
   }
 
   async function correct(
@@ -243,6 +321,15 @@ export const useClassificationStore = defineStore('classification', () => {
     heatmapData.value = null
     selectedTile.value = null
     correctionMode.value = false
+    gradCamResults.value = []
+    gradCamHeatmaps.value.clear()
+    selectedGradCam.value = null
+    gradCamOverlaySettings.value = {
+      enabled: false,
+      opacity: 0.7,
+      show_bbox: true,
+      heatmap_colormap: 'jet'
+    }
     error.value = null
   }
 
@@ -260,10 +347,16 @@ export const useClassificationStore = defineStore('classification', () => {
     heatmapSettings,
     selectedTile,
     correctionMode,
+    gradCamResults,
+    gradCamHeatmaps,
+    selectedGradCam,
+    gradCamLoading,
+    gradCamOverlaySettings,
     isProcessing,
     isCompleted,
     progressPercent,
     progressStatus,
+    hasGradCamResults,
     start,
     loadAllData,
     correct,
@@ -274,6 +367,14 @@ export const useClassificationStore = defineStore('classification', () => {
     setShowGrid,
     selectTile,
     setCorrectionMode,
+    loadGradCamResults,
+    loadGradCamHeatmap,
+    getGradCamHeatmapImage,
+    selectGradCam,
+    setGradCamOverlayEnabled,
+    setGradCamOpacity,
+    setGradCamShowBbox,
+    setGradCamColormap,
     clearAll,
     stopProgressPolling,
     stopPolling

@@ -49,13 +49,17 @@ def run_classification_task(task_id: UUID, image_id: UUID, db: Session):
         def progress_callback(processed: int, total: int):
             service.update_task_progress(task_id, processed, total)
 
-        results = inference_service.run_inference(
+        results, grad_cam_results = inference_service.run_inference(
             tiles=tiles,
             image_id=str(image_id),
             progress_callback=progress_callback
         )
 
         service.save_classification_results(task_id, results)
+        
+        if grad_cam_results:
+            service.save_grad_cam_results(task_id, results, grad_cam_results)
+        
         service.complete_task(task_id)
 
     except Exception as e:

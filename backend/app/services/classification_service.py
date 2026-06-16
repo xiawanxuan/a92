@@ -8,6 +8,7 @@ from collections import defaultdict
 from ..models.correction import ClassificationTask, TileClassification, CorrectionRecord
 from ..models.tile import Tile
 from ..models.image import Image
+from ..models.grad_cam import GradCAMResult
 from ..schemas.classification import SubstrateType, TaskStatus, CorrectionRequest
 from .image_service import ImageService
 from ..core.config import settings
@@ -78,6 +79,69 @@ class ClassificationService:
                 self.db.add(classification)
         self.db.commit()
 
+    def save_grad_cam_results(
+        self,
+        task_id: UUID,
+        classification_results: List[Dict],
+        grad_cam_results: List[Dict]
+    ):
+        task = self.get_task(task_id)
+        if not task:
+            return
+
+        for grad_cam_result in grad_cam_results:
+            result_idx = grad_cam_result.get('result_idx')
+            if result_idx is None or result_idx >= len(classification_results):
+                continue
+
+            cls_result = classification_results[result_idx]
+            
+            tile = self.db.query(Tile).filter(
+                Tile.image_id == cls_result['image_id'],
+                Tile.tile_x == cls_result['tile_x'],
+                Tile.tile_y == cls_result['tile_y']
+            ).first()
+            
+            if not tile:
+                continue
+
+            classification = self.db.query(TileClassification).filter(
+                TileClassification.task_id == task_id,
+                TileClassification.tile_id == tile.id
+            ).first()
+            
+            if not classification:
+                continue
+
+            bbox = grad_cam_result.get('bbox')
+            has_bbox = bbox is not None
+
+            grad_cam_record = GradCAMResult(
+                classification_id=classification.id,
+                tile_id=tile.id,
+                image_id=task.image_id,
+                task_id=task_id,
+                tile_x=cls_result['tile_x'],
+                tile_y=cls_result['tile_y'],
+                target_class=cls_result['predicted_class'],
+                confidence=grad_cam_result.get('confidence', cls_result['confidence']),
+                heatmap_data=grad_cam_result.get('heatmap_data', b''),
+                heatmap_width=grad_cam_result.get('heatmap_shape', [512, 512])[1] if len(grad_cam_result.get('heatmap_shape', [512, 512])) > 1 else 512,
+                heatmap_height=grad_cam_result.get('heatmap_shape', [512, 512])[0] if len(grad_cam_result.get('heatmap_shape', [512, 512])) > 0 else 512,
+                bbox_x=bbox.get('x') if bbox else None,
+                bbox_y=bbox.get('y') if bbox else None,
+                bbox_width=bbox.get('width') if bbox else None,
+                bbox_height=bbox.get('height') if bbox else None,
+                bbox_area_ratio=bbox.get('area_ratio') if bbox else None,
+                bbox_avg_intensity=bbox.get('avg_intensity') if bbox else None,
+                bbox_max_intensity=bbox.get('max_intensity') if bbox else None,
+                bbox_confidence=bbox.get('confidence') if bbox else None,
+                has_bbox=has_bbox
+            )
+            self.db.add(grad_cam_record)
+        
+        self.db.commit()
+
     def get_classification_results(self, task_id: UUID) -> List[TileClassification]:
         return self.db.query(TileClassification).filter(
             TileClassification.task_id == task_id
@@ -87,6 +151,55 @@ class ClassificationService:
         return self.db.query(TileClassification).filter(
             TileClassification.task_id == task_id,
             TileClassification.tile_id == tile_id
+        ).first()
+
+    def get_grad_cam_results(self, task_id: UUID, skip: int = 0, limit: int = 100) -> Tuple[List[GradCAMResult], int]:
+        query = self.db.query(GradCAMResult).filter(GradCAMResult.task_id == task_id)
+        total = query.count()
+        items = query.order_by(GradCAMResult.confidence.desc()).offset(skip).limit(limit).all()
+        return items, total
+
+    def get_grad_cam_result(self, grad_cam_id: UUID) -> Optional[GradCAMResult]:
+        return self.db.query(GradCAMResult).filter(GradCAMResult.id == grad_cam_id).first()
+
+    def get_grad_cam_heatmap(self, grad_cam_id: UUID) -> Optional[Dict]:
+        result = self.get_grad_cam_result(grad_cam_id)
+        if not result:
+            return None
+
+        import numpy as np
+        heatmap_array = np.frombuffer(result.heatmap_data, dtype=np.uint8)
+        heatmap_array = heatmap_array.reshape(result.heatmap_height, result.heatmap_width)
+        heatmap_normalized = heatmap_array.astype(np.float32) / 255.0
+
+        bbox = None
+        if result.has_bbox and result.bbox_x is not None:
+            bbox = {
+                'x': result.bbox_x,
+                'y': result.bbox_y,
+                'width': result.bbox_width,
+                'height': result.bbox_height,
+                'area_ratio': result.bbox_area_ratio,
+                'avg_intensity': result.bbox_avg_intensity,
+                'max_intensity': result.bbox_max_intensity,
+                'confidence': result.bbox_confidence
+            }
+
+        return {
+            'id': result.id,
+            'tile_x': result.tile_x,
+            'tile_y': result.tile_y,
+            'target_class': result.target_class,
+            'confidence': result.confidence,
+            'heatmap': heatmap_normalized.tolist(),
+            'bbox': bbox
+        }
+
+    def get_grad_cam_by_tile(self, task_id: UUID, tile_x: int, tile_y: int) -> Optional[GradCAMResult]:
+        return self.db.query(GradCAMResult).filter(
+            GradCAMResult.task_id == task_id,
+            GradCAMResult.tile_x == tile_x,
+            GradCAMResult.tile_y == tile_y
         ).first()
 
     def correct_tile_classification(

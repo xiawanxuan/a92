@@ -191,3 +191,55 @@ export const TASK_STATUS_NAMES: Record<TaskStatus, string> = {
   completed: '已完成',
   failed: '失败'
 }
+
+export interface BoundingBox {
+  x: number
+  y: number
+  width: number
+  height: number
+  area_ratio: number
+  avg_intensity: number
+  max_intensity: number
+  confidence: number
+}
+
+export interface GradCAMResult {
+  id: string
+  classification_id: string
+  tile_id: string
+  image_id: string
+  task_id: string
+  tile_x: number
+  tile_y: number
+  target_class: SubstrateClass
+  confidence: number
+  heatmap_width: number
+  heatmap_height: number
+  has_bbox: boolean
+  bbox?: BoundingBox
+  created_at: string
+}
+
+export interface GradCAMHeatmapResponse {
+  id: string
+  tile_x: number
+  tile_y: number
+  target_class: SubstrateClass
+  confidence: number
+  heatmap: number[][]
+  bbox?: BoundingBox
+}
+
+export interface GradCAMListResponse {
+  items: GradCAMResult[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export interface GradCAMOverlaySettings {
+  enabled: boolean
+  opacity: number
+  show_bbox: boolean
+  heatmap_colormap: 'jet' | 'hot' | 'viridis' | 'plasma'
+}

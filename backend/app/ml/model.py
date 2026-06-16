@@ -4,6 +4,8 @@ import torchvision.models as models
 from typing import Tuple, Dict, Optional
 from pathlib import Path
 
+from .grad_cam import GradCAMManager
+
 
 class SonarResNet50(nn.Module):
     def __init__(self, num_classes: int = 4, pretrained: bool = True):
@@ -164,6 +166,28 @@ class ClassificationModel:
 
     def get_class_idx(self, class_name: str) -> int:
         return self.class_names.index(class_name)
+
+    def get_grad_cam_manager(self) -> GradCAMManager:
+        if not hasattr(self, '_grad_cam_manager'):
+            self._grad_cam_manager = GradCAMManager(
+                self.model,
+                self.device,
+                target_layer='layer4'
+            )
+        return self._grad_cam_manager
+
+    def generate_grad_cam(
+        self,
+        image_tensor: torch.Tensor,
+        target_class: int,
+        original_h: Optional[int] = None,
+        original_w: Optional[int] = None,
+        bbox_threshold: float = 0.5
+    ) -> Optional[Dict]:
+        grad_cam = self.get_grad_cam_manager()
+        return grad_cam.process_tile(
+            image_tensor, target_class, original_h, original_w, bbox_threshold
+        )
 
 
 def get_model(model_path: str, device: str = "cpu") -> ClassificationModel:

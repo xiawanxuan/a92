@@ -8,6 +8,7 @@ from .models import *
 from .api import image as image_router
 from .api import classification as classification_router
 from .api import stats as stats_router
+from .api import grad_cam as grad_cam_router
 from .ml.inference import get_inference_service
 
 
@@ -44,6 +45,7 @@ app.add_middleware(
 app.include_router(image_router.router)
 app.include_router(classification_router.router)
 app.include_router(stats_router.router)
+app.include_router(grad_cam_router.router)
 
 
 @app.get("/api/health")
